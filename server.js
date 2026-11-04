@@ -1,0 +1,57 @@
+// Wrongly AI Voice server — Node.js 20+; no npm packages required.
+// Set OPENAI_API_KEY in the environment. Do not put keys in HTML.
+'use strict';
+const http = require('node:http');
+const fs = require('node:fs');
+const path = require('node:path');
+const PORT = Number(process.env.PORT || 3000);
+const MAX_AUDIO_BYTES = 3 * 1024 * 1024;
+const INDEX = fs.readFileSync(path.join(__dirname, 'index.html'));
+
+function send(res, status, data, contentType='application/json') {
+  res.writeHead(status, {'Content-Type':contentType,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+  res.end(contentType==='application/json' ? JSON.stringify(data) : data);
+}
+async function handle(req,res) {
+  const pathname = new URL(req.url,`http://${req.headers.host || 'localhost'}`).pathname;
+  if(req.method==='GET' && (pathname==='/' || pathname==='/index.html')) return send(res,200,INDEX,'text/html; charset=utf-8');
+  if(req.method==='GET' && pathname==='/api/status') return send(res,200,{transcriptionReady:!!process.env.OPENAI_API_KEY});
+  if(req.method!=='POST'||pathname!=='/api/transcribe') return send(res,404,{error:'Not found'});
+  if(!process.env.OPENAI_API_KEY) return send(res,503,{error:'AI transcription is not configured on this server.'});
+  const ct=(req.headers['content-type']||'').split(';')[0].trim();
+  const allowed={'audio/webm':'webm','audio/mp4':'m4a','audio/ogg':'ogg','audio/wav':'wav','audio/mpeg':'mp3'};
+  if(!allowed[ct]) return send(res,415,{error:'Unsupported recording format'});
+  let size=0;const chunks=[];
+  try {
+    for await (const chunk of req) {
+      size+=chunk.length;
+      if(size>MAX_AUDIO_BYTES) return send(res,413,{error:'Audio clip too large'});
+      chunks.push(chunk);
+    }
+    if(size<100) return send(res,400,{error:'No audio found'});
+    const form = new FormData();
+    form.append('model', 'gpt-4o-mini-transcribe');
+    form.append('language','en');
+    form.append('prompt','Transcribe a single short spoken answer to a trivia question. Preserve what the speaker actually says. Do not answer the question yourself.');
+    form.append('file',new Blob([Buffer.concat(chunks)],{type:ct}),`answer.${allowed[ct]}`);
+    const abort=new AbortController();const timeout=setTimeout(()=>abort.abort(),25000);
+    let response;
+    try {
+      response=await fetch('https://api.openai.com/v1/audio/transcriptions',{
+        method:'POST',headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`},body:form,signal:abort.signal
+      });
+    } finally {clearTimeout(timeout)}
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok) {
+      console.error('Transcription provider error',response.status, result.error?.code||'unknown');
+      return send(res,502,{error:'AI transcription temporarily unavailable. Please retry.'});
+    }
+    const text=typeof result.text==='string'?result.text.trim():'';
+    return send(res,200,{text});
+  } catch(e) {
+    console.error('Transcription request failure:',e.message);
+    return send(res,502,{error:'Could not transcribe audio. Please retry.'});
+  }
+}
+const server=http.createServer((req,res)=>{handle(req,res).catch(e=>{console.error(e);if(!res.headersSent)send(res,500,{error:'Unexpected server error'})})});
+server.listen(PORT,'0.0.0.0',()=>console.log(`Wrongly running on http://localhost:${PORT}`));
