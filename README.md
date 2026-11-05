@@ -24,3 +24,6 @@ Render > Wrongly > Environment must contain `OPENAI_API_KEY` with a valid key fo
 - The 650 ms tail helps catch the last sound of an answer that **began before the timer ended**. It is not a fully tamper-proof speech-onset validator. A later production version should use voice-activity detection and timestamped audio to prevent words started after the buzzer from counting.
 - Hosted HTTPS is required for microphone recording on Chrome. Opening an HTML file directly from Downloads may not work.
 - No global accounts or online leaderboards yet. The current score is stored in the player's browser.
+
+
+V3: Classic mode saves whatever is typed when the 4-second timer ends, even without Enter. Read-aloud is optional and starts the timer AFTER reading. Speed options: 1.0x, 1.5x, 2.0x, 2.5x. AI fallback grading for unexpected plausible answers uses /api/grade and the server OPENAI_API_KEY; when unavailable, the built-in word list is used. AI grading can incur API charges.
