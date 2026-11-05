@@ -32,7 +32,7 @@ async function handle(req,res) {
     const form = new FormData();
     form.append('model', 'gpt-4o-mini-transcribe');
     form.append('language','en');
-    form.append('prompt','Transcribe a single short spoken answer to a trivia question. Preserve what the speaker actually says. Do not answer the question yourself.');
+    form.append('prompt','This is a very short recorded voice answer to a game prompt. Transcribe only the words actually spoken, even if the word sounds strange or incorrect. Do not invent an answer, complete a clipped word, or describe noises. If there is no intelligible speech, return empty text.');
     form.append('file',new Blob([Buffer.concat(chunks)],{type:ct}),`answer.${allowed[ct]}`);
     const abort=new AbortController();const timeout=setTimeout(()=>abort.abort(),25000);
     let response;

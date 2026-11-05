@@ -1,33 +1,26 @@
-# Wrongly — AI Voice + Blitz
+# Wrongly — Variety + Better Voice edition
 
-Play **Classic (4 seconds)**, **Speech-to-Text (4 seconds)**, and **Wrongly Blitz (1.5 seconds)**. All modes have three rounds of five questions; each new game draws fresh questions. Number, month and planet/space questions have been removed. Voice modes record a short audio clip on the Chromebook/phone, upload it to the site's private backend, and grade the transcribed answer. Classic can also be opened directly from `index.html`, but voice mode requires the server.
+A 3-round game (5 questions per round) featuring Classic (4-second typing), Speech-to-Text (4-second speaking), and Wrongly Blitz (1.5-second speaking).
 
-## Run locally (Node.js 20+)
+## Updates
+- Nearly 200 hand-written prompts spanning 19 categories, from sports, jobs, weather and music to everyday objects; no number-sequence, calendar-month, or space questions.
+- Each game draws 15 fresh prompts with a different category for each question when possible, reducing repetitive topics.
+- In voice modes, recording lasts for the answer window **plus a 650 ms audio tail** to avoid clipping word endings. The timer still ends at 1.5 s in Blitz or 4 s in Speech-to-Text. Audio is sent to the AI **after** recording ends. There may be a short delay before the next question.
+- Voice transcription is not the same as AI grading: transcription uses the OpenAI API; answer checking uses curated category vocabulary plus typo correction.
 
-1. On a computer with Node.js installed, set your OpenAI API key in an environment variable **on the server**, not inside the HTML.
-2. Start the server with `node server.js`.
-3. Open `http://localhost:3000` in Chrome and allow microphone access.
+## Publish updates to your already-live Render website
+1. Open your GitHub `wrongly` repository.
+2. Upload/replace these files at repository root: `index.html`, `server.js`, `package.json`, `README.md`.
+3. Commit the changes. Render will usually redeploy automatically; otherwise choose Manual Deploy > Deploy latest commit.
+4. Refresh your Render URL (on Chrome press Ctrl+Shift+R).
+5. Test **Classic** first, then select **Wrongly Blitz** and allow microphone access.
 
-macOS/Linux example:
+## Voice configuration
+Render > Wrongly > Environment must contain `OPENAI_API_KEY` with a valid key for transcription. **Never include this key in GitHub or the HTML**. API use can cost money.
 
-```sh
-export OPENAI_API_KEY="your_key_here"
-node server.js
-```
+`GET /api/status` reports whether transcription is configured. If voice returns no text despite audible speaking, check Render logs for transcription errors, mic permissions, audio input selection, and the AI account's API billing. The browser's microphone permission alone does not guarantee successful AI transcription.
 
-Windows PowerShell example:
-
-```powershell
-$env:OPENAI_API_KEY="your_key_here"
-node server.js
-```
-
-For a **Chromebook that opens HTML from Files**, voice mode cannot use this backend from the downloaded file. Deploy this folder to a Node.js-capable hosting service (for example, a Node web service) and configure `OPENAI_API_KEY` as a private server environment variable. The site must use **HTTPS** (or `localhost`) for microphone recording. A static-only hosting service will not run `server.js`.
-
-## Notes
-
-- No keys are sent to the player's browser. OpenAI transcription API usage is billed to the server account.
-- Recordings are sent to the private server for transcription and are not saved in this prototype. Scores/progress are saved in the browser.
-- The AI transcribes speech; the game currently grades using its built-in question categories and typo correction, not a second AI grading service.
-- Separate multiplayer leaderboards, account logins, and stronger anti-cheat protection still require production development.
-- For a fair 1.5-second voice round, the audio is recorded during the deadline and AI transcribes **after** time expires. Recognition speed does not consume the player's time.
+### Notes
+- The 650 ms tail helps catch the last sound of an answer that **began before the timer ended**. It is not a fully tamper-proof speech-onset validator. A later production version should use voice-activity detection and timestamped audio to prevent words started after the buzzer from counting.
+- Hosted HTTPS is required for microphone recording on Chrome. Opening an HTML file directly from Downloads may not work.
+- No global accounts or online leaderboards yet. The current score is stored in the player's browser.
