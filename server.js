@@ -15,7 +15,7 @@ function send(res, status, data, contentType='application/json') {
 async function handle(req,res) {
   const pathname = new URL(req.url,`http://${req.headers.host || 'localhost'}`).pathname;
   if(req.method==='GET' && (pathname==='/' || pathname==='/index.html')) return send(res,200,INDEX,'text/html; charset=utf-8');
-  if(req.method==='GET' && pathname==='/api/status') return send(res,200,{transcriptionReady:!!process.env.OPENAI_API_KEY});
+  if(req.method==='GET' && pathname==='/api/status') return send(res,200,{transcriptionReady:!!process.env.OPENAI_API_KEY,mode:'record-and-transcribe',provider:'OpenAI',note:process.env.OPENAI_API_KEY?'Server key configured; verify API billing if requests fail.':'Add OPENAI_API_KEY in Render Environment.'});
   if(req.method==='POST' && pathname==='/api/grade') {
     if(!process.env.OPENAI_API_KEY)return send(res,503,{error:'AI grading not configured'});
     let body='';
@@ -36,7 +36,7 @@ async function handle(req,res) {
   if(req.method!=='POST'||pathname!=='/api/transcribe') return send(res,404,{error:'Not found'});
   if(!process.env.OPENAI_API_KEY) return send(res,503,{error:'AI transcription is not configured on this server.'});
   const ct=(req.headers['content-type']||'').split(';')[0].trim();
-  const allowed={'audio/webm':'webm','audio/mp4':'m4a','audio/ogg':'ogg','audio/wav':'wav','audio/mpeg':'mp3'};
+  const allowed={'audio/webm':'webm','audio/mp4':'m4a','audio/x-m4a':'m4a','audio/ogg':'ogg','audio/wav':'wav','audio/x-wav':'wav','audio/mpeg':'mp3'};
   if(!allowed[ct]) return send(res,415,{error:'Unsupported recording format'});
   let size=0;const chunks=[];
   try {
@@ -60,8 +60,15 @@ async function handle(req,res) {
     } finally {clearTimeout(timeout)}
     const result=await response.json().catch(()=>({}));
     if(!response.ok) {
-      console.error('Transcription provider error',response.status, result.error?.code||'unknown');
-      return send(res,502,{error:'AI transcription temporarily unavailable. Please retry.'});
+      const code=String(result.error?.code||result.error?.type||'unknown');
+      console.error('Transcription provider error:',response.status,code, String(result.error?.message||'').slice(0,300));
+      const detail = response.status===401 ? 'OpenAI API key rejected. Check OPENAI_API_KEY in Render.'
+        : response.status===429 ? 'OpenAI rate limit or billing quota reached. Check OpenAI API billing and limits.'
+        : response.status===400 ? 'OpenAI rejected the recording format or audio data. Check Render logs for details.'
+        : response.status===403 ? 'Your OpenAI project does not have access to transcription.'
+        : response.status>=500 ? 'OpenAI transcription service error. Try again shortly.'
+        : 'Transcription failed. Open Render Logs for the provider error.';
+      return send(res,502,{error:detail});
     }
     const text=typeof result.text==='string'?result.text.trim():'';
     return send(res,200,{text});

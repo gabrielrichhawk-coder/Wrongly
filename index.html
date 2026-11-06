@@ -12,8 +12,9 @@
 <section id="results" class="hidden"><div class="hero" id="round-emoji">😈</div><div class="eyebrow" id="round-label">Round complete</div><h2 id="round-message"></h2><div class="score" id="round-score"></div><div class="pct" id="round-percentage"></div><p>accepted wrong answers</p><div class="reviews" id="reviews"></div><div class="actions"><button id="next-round" type="button" class="btn primary">NEXT ROUND →</button><button id="copy-round" type="button" class="btn secondary">📋 COPY ROUND RESULTS</button></div></section>
 <section id="daily" class="hidden"><div class="hero">🏆</div><div class="eyebrow">Game complete</div><h1>You're officially <span class="purple">WRONGLY!</span></h1><p>Your wrong-answer score</p><div class="score" id="daily-score"></div><div class="pct" id="daily-percentage"></div><div class="badge" id="daily-message"></div><div class="badge" id="daily-mode"></div><div class="share" id="share-preview"></div><div class="actions"><button id="copy-daily" type="button" class="btn primary">📋 COPY & SHARE RESULTS</button><button id="share-daily" type="button" class="btn secondary">↗ SHARE WITH FRIENDS</button><button id="play-again" type="button" class="btn primary">⚡ PLAY 15 NEW QUESTIONS →</button><button id="leaderboard-button" type="button" class="btn secondary">🏆 VIEW LEADERBOARD</button></div><p class="muted">Your share card won't spoil today's questions.</p><div class="count" id="reset-countdown"></div></section>
 <section id="leaderboard" class="hidden"><div class="hero">🏆</div><div class="eyebrow" id="board-mode">Leaderboard</div><h2>How wrongly did you do?</h2><p>Online rankings will appear once Wrongly has user accounts and a shared database. This is unlimited practice mode.</p><div class="leader-row"><span>🥇 You (this device)</span><span id="board-score">—</span></div><div class="notice">This standalone version does not connect to a server. No other players' scores are invented.</div><div class="actions"><button id="board-back" type="button" class="btn secondary">← BACK TO RESULTS</button></div></section>
-</div></div><footer class="footer">WRONGLY · WRONG ANSWERS WIN · AI AUDIO TRANSCRIPTION</footer></div><div id="toast" class="toast hidden" role="status"></div>
+</div></div><footer class="footer">WRONGLY V4 · QUESTION NARRATION + AI VOICE</footer></div><div id="toast" class="toast hidden" role="status"></div>
 <script>
+
 (()=>{'use strict';
 const byId=id=>document.getElementById(id);
 const STORAGE='wrongly-variety-v6';
@@ -166,17 +167,27 @@ function narrateQuestion(q,after){
  let resolved=false;
  const utter=new SpeechSynthesisUtterance(q.q);utter.lang='en-US';utter.rate=readSpeed;
  const finish=()=>{if(resolved||token!==utteranceToken)return;resolved=true;clearTimeout(fallback);if(!playing||locked||!state.inProgress)return;after()};
- utter.onend=finish;utter.onerror=finish;
+ utter.onend=finish;utter.onerror=()=>{byId('feedback').textContent='Question audio unavailable; starting timer.';finish()};
  // Avoid a stuck round on browsers where speechSynthesis never fires onend.
  const fallback=setTimeout(()=>{try{window.speechSynthesis.cancel()}catch(e){}finish()},Math.max(4500,Math.min(16000,q.q.length*110/readSpeed+2000)));
  try{window.speechSynthesis.cancel();window.speechSynthesis.speak(utter)}catch(e){finish()}
 }
 function beginAnswerWindow(active,voice){
- if(!playing||!state.inProgress||locked)return;
+ // Only called after the optional text-to-speech narration finishes.
+ if(!playing||!state.inProgress||state.inProgress!==active||locked)return;
  byId('timer-caption').textContent='TIME REMAINING';
- narrateQuestion(q,()=>beginAnswerWindow(active,voice));
+ if(voice){
+  beginVoice(); // starts the actual recording and timer together
+ }else{
+  byId('answer').disabled=false;
+  byId('submit-answer').disabled=false;
+  active.questionStartedAt=Date.now();save();
+  try{byId('answer').focus({preventScroll:true})}catch(e){}
+  tick();
+ }
 }
 function showQuestion(){
+ stopNarration();
  const active=state.inProgress;if(!active||!playing)return;
  const idx=active.answers.length;if(idx>=5){finishRound();return}
  locked=false;voiceStarted=false;recordingBlob=null;transcriptionBusy=false;
@@ -190,12 +201,9 @@ function showQuestion(){
  const limit=state.mode==='blitz'?1500:4000;
  byId('clock').textContent=(limit/1000).toFixed(1)+'s';byId('timerfill').style.width='100%';byId('timerfill').style.background='#7538ed';
  cancelAnimationFrame(raf);clearTimeout(timer);clearTimeout(voiceGrace);
- if(voice)beginVoice();else{
-  byId('answer').disabled=false;byId('submit-answer').disabled=false;
-  active.questionStartedAt=Date.now();save();
-  try{byId('answer').focus({preventScroll:true})}catch(e){}
-  tick()
- }
+ // The clock and (in voice modes) the microphone both begin AFTER narration.
+ byId('answer').disabled=true;byId('submit-answer').disabled=true;
+ narrateQuestion(q,()=>beginAnswerWindow(active,voice));
 }
 function beginVoice(){
  if(!playing||locked||!micStream)return;
@@ -249,8 +257,8 @@ async function sendForTranscription(blob){
  if(!blob || blob.size<100){showTranscriptionError('No audio was recorded.');return}
  try{
   const resp=await fetch('/api/transcribe',{method:'POST',headers:{'Content-Type':blob.type||'audio/webm'},body:blob,signal:AbortSignal.timeout(30000)});
-  const result=await resp.json();
-  if(!resp.ok)throw Error(result.error||'Transcription failed');
+  const result=await resp.json().catch(()=>({}));
+  if(!resp.ok)throw Error(result.error||`Transcription server returned HTTP ${resp.status}`);
   const phrase=String(result.text||'').trim();
   byId('voice-transcript').textContent=phrase?'“'+phrase+'”':'No words detected';
   byId('listen-label').textContent=phrase?'✓ AI heard your answer':'No speech detected';
@@ -307,4 +315,5 @@ document.querySelectorAll('.mode-choice').forEach(b=>b.addEventListener('click',
 byId('challenge-label').textContent='UNLIMITED PLAY';
 window.addEventListener('visibilitychange',()=>{if(!document.hidden&&playing&&!locked&&!transcriptionBusy)tick()});selectedMode=state.mode||'classic';syncMode();recover();
 })();
+
 </script></body></html>
